@@ -1,0 +1,114 @@
+# -*- coding: utf-8 -*-
+import csv
+from database import Session, User, Agent, Request
+from datetime import datetime
+import os
+import sys
+
+print("=" * 50)
+print("📊 ЭКСПОРТ ДАННЫХ В CSV")
+print("=" * 50)
+
+# Показываем текущую папку
+print(f"Текущая папка: {os.getcwd()}")
+
+# Создаем папку для экспортов с проверкой
+try:
+    exports_dir = os.path.join(os.getcwd(), 'exports')
+    if not os.path.exists(exports_dir):
+        os.makedirs(exports_dir)
+        print(f"✅ Создана папка: {exports_dir}")
+    else:
+        print(f"✅ Папка уже существует: {exports_dir}")
+except Exception as e:
+    print(f"❌ ОШИБКА: Не удалось создать папку: {e}")
+    input("Нажмите Enter для выхода...")
+    sys.exit(1)
+
+# Проверка подключения к базе
+try:
+    session = Session()
+    # Проверяем, работает ли база
+    test_count = session.query(User).count()
+    print(f"✅ Подключение к базе данных успешно (пользователей: {test_count})")
+except Exception as e:
+    print(f"❌ ОШИБКА: Не удалось подключиться к базе: {e}")
+    input("Нажмите Enter для выхода...")
+    sys.exit(1)
+
+# Текущая дата для имени файлов
+date_str = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+try:
+    # ============= ЭКСПОРТ АГЕНТОВ =============
+    print("\n👥 Экспорт агентов...")
+    
+    filename = f'exports/agents_{date_str}.csv'
+    with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID', 'ФИО', 'Телефон', 'Email', 'Статус', 'Рефералов', 'Заявок'])
+        
+        agents = session.query(Agent).all()
+        for agent in agents:
+            user = session.query(User).filter_by(id=agent.user_id).first()
+            if user:
+                referrals = session.query(User).filter_by(invited_by_id=user.id).count()
+                requests = session.query(Request).filter_by(agent_id=agent.id).count()
+                status = '✅' if user.telegram_id else '❌'
+                writer.writerow([agent.id, agent.full_name, agent.phone, agent.email, status, referrals, requests])
+    
+    print(f"  ✅ {filename} - {len(agents)} агентов")
+    
+    # ============= ЭКСПОРТ КЛИЕНТОВ =============
+    print("\n👥 Экспорт клиентов...")
+    
+    filename = f'exports/clients_{date_str}.csv'
+    with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID', 'Имя', 'Дата', 'Агент'])
+        
+        clients = session.query(User).filter_by(role='referral').all()
+        for client in clients:
+            agent_name = 'Прямая регистрация'
+            if client.invited_by_id:
+                inviter = session.query(User).filter_by(id=client.invited_by_id).first()
+                if inviter:
+                    agent = session.query(Agent).filter_by(user_id=inviter.id).first()
+                    agent_name = agent.full_name if agent else 'Агент (без профиля)'
+            
+            writer.writerow([client.id, client.first_name, client.registered_at.strftime('%d.%m.%Y'), agent_name])
+    
+    print(f"  ✅ {filename} - {len(clients)} клиентов")
+    
+    # ============= ЭКСПОРТ ЗАЯВОК =============
+    print("\n📝 Экспорт заявок...")
+    
+    filename = f'exports/requests_{date_str}.csv'
+    with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID', 'Дата', 'Клиент', 'Телефон', 'Центр', 'Статус'])
+        
+        requests = session.query(Request).order_by(Request.created_at.desc()).all()
+        for req in requests[:100]:  # Ограничим 100 последними заявками
+            writer.writerow([
+                req.id,
+                req.created_at.strftime('%d.%m.%Y %H:%M'),
+                req.full_name,
+                req.phone,
+                req.center,
+                req.status
+            ])
+    
+    print(f"  ✅ {filename} - {min(len(requests), 100)} заявок")
+    
+except Exception as e:
+    print(f"❌ ОШИБКА при экспорте: {e}")
+    import traceback
+    traceback.print_exc()
+finally:
+    session.close()
+
+print("\n" + "=" * 50)
+print("✅ ОПЕРАЦИЯ ЗАВЕРШЕНА")
+print("=" * 50)
+input("\nНажмите Enter для выхода...")

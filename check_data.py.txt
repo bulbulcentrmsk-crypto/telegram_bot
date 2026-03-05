@@ -1,0 +1,11 @@
+(
+echo from database import Session, Agent, User, Request
+echo session = Session()
+echo print("=" * 50)
+echo print("СОДЕРЖИМОЕ БАЗЫ ДАННЫХ")
+echo print("=" * 50)
+echo print(f"Агентов: {session.query(Agent).count()}")
+echo print(f"Пользователей: {session.query(User).count()}")
+echo print(f"Заявок: {session.query(Request).count()}")
+echo session.close()
+) > check_data.py

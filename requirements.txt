@@ -1,0 +1,6 @@
+aiogram==2.25.1
+sqlalchemy==1.4.47
+python-dotenv==1.0.0
+apscheduler==3.10.4
+pillow==10.0.0
+qrcode==7.4.2
