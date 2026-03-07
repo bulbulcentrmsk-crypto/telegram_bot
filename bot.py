@@ -23,29 +23,23 @@ scheduler = AsyncIOScheduler()
 
 # КЛАВИАТУРЫ ----------------------------------------------------------------
 def get_start_keyboard(role):
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     if role == 'admin':
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(KeyboardButton('📊 Статистика'))
         keyboard.add(KeyboardButton('👥 Агенты'))
         keyboard.add(KeyboardButton('📋 Все заявки'))
-        keyboard.add(KeyboardButton('🏥 Центры'))
+        keyboard.add(KeyboardButton('🏊 Центры "Буль-Буль"'))
     elif role == 'agent':
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(KeyboardButton('🔗 Моя ссылка'))
         keyboard.add(KeyboardButton('📱 QR-код'))
         keyboard.add(KeyboardButton('📊 Мои рефералы'))
         keyboard.add(KeyboardButton('📋 Заявки'))
     else:
-        keyboard.add(KeyboardButton('📝 Заявка'))
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard.add(KeyboardButton('📝 Записаться'))
         keyboard.add(KeyboardButton('📞 Контакты'))
-    return keyboard
-
-def get_centers_inline_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    keyboard.add(
-        InlineKeyboardButton('Медицинский центр "Здоровье"', callback_data='center_1'),
-        InlineKeyboardButton('Диагностический центр "Профи"', callback_data='center_2'),
-        InlineKeyboardButton('Центр реабилитации "Восстановление"', callback_data='center_3')
-    )
+        keyboard.add(KeyboardButton('🏊 Наши центры'))
     return keyboard
 
 # СТАРТ ---------------------------------------------------------------------
