@@ -748,6 +748,18 @@ async def send_reminders():
     session.close()
 
 # ЗАПУСК --------------------------------------------------------------------
+# ============= УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК =============
+@dp.message_handler()
+async def debug_all_messages(message: types.Message):
+    print(f"🔥 Сообщение: '{message.text}' от {message.from_user.id}")
+    
+    # Проверяем, админ ли пользователь
+    is_admin = message.from_user.id in config.ADMIN_IDS
+    print(f"🔥 Админ: {is_admin}")
+    
+    # Просто отвечаем на любое сообщение
+    await message.answer(f"Тест: получено '{message.text}'. Админ: {is_admin}")
+    
 if __name__ == '__main__':
     scheduler.add_job(send_reminders, 'interval', hours=24)
     scheduler.start()
