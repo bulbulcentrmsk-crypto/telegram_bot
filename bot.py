@@ -80,6 +80,10 @@ async def cmd_start(message: types.Message):
         if invited_by and invited_by.role == 'agent':
             await bot.send_message(invited_by.telegram_id, 
                 f"🎉 У вас новый реферал! Поздравляем! 🎉\n\n{message.from_user.first_name} только что присоединился по вашей ссылке.")
+    else:
+        if message.from_user.id in config.ADMIN_IDS and user.role != 'admin':
+            user.role = 'admin'
+            session.commit()
     
     # Приветствие в зависимости от роли
     if user.role == 'admin':
