@@ -23,21 +23,25 @@ scheduler = AsyncIOScheduler()
 
 # КЛАВИАТУРЫ ----------------------------------------------------------------
 def get_start_keyboard(role):
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     if role == 'admin':
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(KeyboardButton('📊 Статистика'))
         keyboard.add(KeyboardButton('👥 Агенты'))
         keyboard.add(KeyboardButton('📋 Все заявки'))
         keyboard.add(KeyboardButton('🏊 Центры "Буль-Буль"'))
     elif role == 'agent':
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(KeyboardButton('🔗 Моя ссылка'))
         keyboard.add(KeyboardButton('📱 QR-код'))
         keyboard.add(KeyboardButton('📊 Мои рефералы'))
         keyboard.add(KeyboardButton('📋 Заявки'))
     else:
+<<<<<<< Updated upstream
         keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
         keyboard.add(KeyboardButton('📝 Записаться'))
+=======
+        keyboard.add(KeyboardButton('📝 Заявка'))
+        keyboard.add(KeyboardButton('🏥 Центры'))
+>>>>>>> Stashed changes
         keyboard.add(KeyboardButton('📞 Контакты'))
         keyboard.add(KeyboardButton('🏊 Наши центры'))
     return keyboard
@@ -85,32 +89,77 @@ async def cmd_start(message: types.Message):
             user.role = 'admin'
             session.commit()
     
+<<<<<<< Updated upstream
     # Приветствие в зависимости от роли
+=======
+    # Приветствие
+>>>>>>> Stashed changes
     if user.role == 'admin':
         welcome_text = f"👋 *Привет, {message.from_user.first_name}!*\n\n🔑 Ты вошёл как *администратор* сети «Буль-Буль».\n📊 Управляй агентами и смотри статистику."
     elif user.role == 'agent':
         welcome_text = f"👋 *Привет, {message.from_user.first_name}!*\n\n🤝 Ты вошёл как *агент* сети «Буль-Буль».\n💼 Приглашай родителей и отслеживай записи."
     else:
+<<<<<<< Updated upstream
         welcome_text = f"👋 *Привет, {message.from_user.first_name}!*\n\n🫂 Добро пожаловать в сеть бассейнов *«Буль-Буль»* для самых маленьких!\n\n📝 *Хочешь записаться?* Нажимай «Записаться»\n🏊 *Посмотреть бассейны?* Нажимай «Наши центры»"
+=======
+        welcome_text = f"👋 Здравствуйте, {message.from_user.first_name}! Добро пожаловать!"
+>>>>>>> Stashed changes
     
     await message.answer(welcome_text, reply_markup=get_start_keyboard(user.role), parse_mode='Markdown')
     session.close()
 
-# АГЕНТЫ --------------------------------------------------------------------
+# ============= АДМИНКА =============
+@dp.message_handler(lambda message: message.text == '📊 Статистика')
+async def stats_handler(message: types.Message):
+    session = Session()
+    text = f"📊 **СТАТИСТИКА**\n\n"
+    text += f"👥 Всего пользователей: {session.query(User).count()}\n"
+    text += f"👤 Агентов: {session.query(User).filter_by(role='agent').count()}\n"
+    text += f"👥 Рефералов: {session.query(User).filter_by(role='referral').count()}\n"
+    text += f"📝 Заявок: {session.query(Request).count()}"
+    await message.answer(text, parse_mode='Markdown')
+    session.close()
+
+@dp.message_handler(lambda message: message.text == '👥 Агенты')
+async def agents_handler(message: types.Message):
+    keyboard = InlineKeyboardMarkup(row_width=2).add(
+        InlineKeyboardButton('➕ Добавить', callback_data='add_agent'),
+        InlineKeyboardButton('📋 Список', callback_data='list_agents')
+    )
+    await message.answer("👥 Управление агентами:", reply_markup=keyboard)
+
+@dp.message_handler(lambda message: message.text == '📋 Все заявки')
+async def all_requests_handler(message: types.Message):
+    session = Session()
+    requests = session.query(Request).order_by(Request.created_at.desc()).all()
+    if not requests:
+        await message.answer("📭 Заявок нет")
+        session.close()
+        return
+    
+    text = "📋 **Последние заявки:**\n\n"
+    for req in requests[:5]:
+        status = {'pending': '⏳', 'contacted': '✅', 'closed': '❌'}.get(req.status, '⏳')
+        text += f"{status} {req.full_name} - {req.created_at.strftime('%d.%m.%Y')}\n"
+    
+    await message.answer(text, parse_mode='Markdown')
+    session.close()
+
+# ============= АГЕНТЫ =============
 @dp.message_handler(lambda message: message.text == '🔗 Моя ссылка')
-async def get_referral_link(message: types.Message):
+async def link_handler(message: types.Message):
     session = Session()
     user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-    if user and user.role == 'agent':
+    if user:
         bot_username = (await bot.get_me()).username
         await message.answer(f"🔗 Твоя ссылка:\n`https://t.me/{bot_username}?start={user.referral_code}`", parse_mode='Markdown')
     session.close()
 
 @dp.message_handler(lambda message: message.text == '📱 QR-код')
-async def generate_qr(message: types.Message):
+async def qr_handler(message: types.Message):
     session = Session()
     user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-    if user and user.role == 'agent':
+    if user:
         bot_username = (await bot.get_me()).username
         qr = qrcode.make(f"https://t.me/{bot_username}?start={user.referral_code}")
         bio = BytesIO()
@@ -121,33 +170,41 @@ async def generate_qr(message: types.Message):
     session.close()
 
 @dp.message_handler(lambda message: message.text == '📊 Мои рефералы')
-async def view_referrals(message: types.Message):
+async def my_refs_handler(message: types.Message):
     session = Session()
     user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-    if user and user.role == 'agent':
+    if user:
         referrals = session.query(User).filter_by(invited_by_id=user.id).all()
         if referrals:
+<<<<<<< Updated upstream
             text = "📊 *Твои рефералы:*\n\n"
             for r in referrals:
                 text += f"👤 {r.first_name} — {r.registered_at.strftime('%d.%m.%Y')}\n"
+=======
+            text = "📊 Твои рефералы:\n\n" + "\n".join([f"• {r.first_name}" for r in referrals])
+>>>>>>> Stashed changes
         else:
             text = "😢 Пока нет рефералов. Приглашай родителей!"
         await message.answer(text, parse_mode='Markdown')
     session.close()
 
 @dp.message_handler(lambda message: message.text == '📋 Заявки')
-async def agent_requests(message: types.Message):
+async def my_requests_handler(message: types.Message):
     session = Session()
     user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
     if user and user.role == 'agent':
         agent = session.query(Agent).filter_by(user_id=user.id).first()
         if agent:
-            requests = session.query(Request).filter_by(agent_id=agent.id).order_by(Request.created_at.desc()).all()
+            requests = session.query(Request).filter_by(agent_id=agent.id).all()
             if requests:
+<<<<<<< Updated upstream
                 text = "📋 *Твои заявки:*\n\n"
                 for req in requests[:5]:
                     status_emoji = '⏳' if req.status == 'pending' else '✅' if req.status == 'contacted' else '❌'
                     text += f"{status_emoji} {req.full_name} — {req.created_at.strftime('%d.%m.%Y')}\n"
+=======
+                text = "📋 Твои заявки:\n\n" + "\n".join([f"• {r.full_name}" for r in requests[:5]])
+>>>>>>> Stashed changes
             else:
                 text = "📭 Заявок пока нет."
         else:
@@ -155,12 +212,57 @@ async def agent_requests(message: types.Message):
         await message.answer(text, parse_mode='Markdown')
     session.close()
 
+<<<<<<< Updated upstream
 # ЗАЯВКИ ОТ КЛИЕНТОВ --------------------------------------------------------
 @dp.message_handler(lambda message: message.text == '📝 Записаться')
 async def start_request(message: types.Message):
     await message.answer("👶 *Как зовут малыша?* (ФИО)", parse_mode='Markdown')
+=======
+# ============= КЛИЕНТЫ =============
+@dp.message_handler(lambda message: message.text == '📝 Заявка')
+async def new_request_handler(message: types.Message):
+    await message.answer("Введите ваше ФИО:")
+>>>>>>> Stashed changes
     await AddRequest.waiting_for_full_name.set()
 
+@dp.message_handler(lambda message: message.text == '📞 Контакты')
+async def contacts_handler(message: types.Message):
+    await message.answer("📞 +7 (123) 456-78-90\n📧 info@medical.ru")
+
+# ============= ЦЕНТРЫ =============
+@dp.message_handler(lambda message: message.text == '🏥 Центры')
+async def centers_handler(message: types.Message):
+    session = Session()
+    centers = session.query(Center).filter_by(is_active=True).all()
+    
+    if not centers:
+        text = "🏥 Центры:\n\n" + "\n\n".join([info for info in config.CENTERS_INFO.values()])
+    else:
+        text = "🏥 Центры:\n\n" + "\n\n".join([f"**{c.name}**\n{c.address}\n{c.phone}" for c in centers])
+    
+    await message.answer(text, parse_mode='Markdown')
+    session.close()
+
+# ============= CALLBACKS =============
+@dp.callback_query_handler(lambda c: c.data == 'add_agent')
+async def add_agent_start(callback: types.CallbackQuery):
+    await callback.message.answer("Введите ФИО агента:")
+    await AddAgent.waiting_for_full_name.set()
+    await callback.answer()
+
+@dp.callback_query_handler(lambda c: c.data == 'list_agents')
+async def list_agents(callback: types.CallbackQuery):
+    session = Session()
+    agents = session.query(Agent).all()
+    if agents:
+        text = "📋 **Агенты:**\n\n" + "\n".join([f"• {a.full_name} - {a.phone}" for a in agents])
+    else:
+        text = "Агентов нет"
+    await callback.message.answer(text, parse_mode='Markdown')
+    await callback.answer()
+    session.close()
+
+# ============= СОСТОЯНИЯ =============
 @dp.message_handler(state=AddRequest.waiting_for_full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
     await state.update_data(full_name=message.text)
@@ -176,6 +278,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 @dp.message_handler(state=AddRequest.waiting_for_email)
 async def process_email(message: types.Message, state: FSMContext):
     await state.update_data(email=message.text)
+<<<<<<< Updated upstream
     await message.answer("🏊 *Выбери бассейн:*", reply_markup=get_centers_inline_keyboard(), parse_mode='Markdown')
     await AddRequest.waiting_for_center.set()
 
@@ -184,8 +287,10 @@ async def process_center(callback: types.CallbackQuery, state: FSMContext):
     center_id = callback.data.split('_')[1]
     await state.update_data(center=center_id)
     await callback.message.answer("💬 *Напиши удобное время или вопрос*", parse_mode='Markdown')
+=======
+    await message.answer("Кратко опишите вопрос:")
+>>>>>>> Stashed changes
     await AddRequest.waiting_for_message.set()
-    await callback.answer()
 
 @dp.message_handler(state=AddRequest.waiting_for_message)
 async def process_message(message: types.Message, state: FSMContext):
@@ -194,6 +299,7 @@ async def process_message(message: types.Message, state: FSMContext):
     user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
     
     if user:
+<<<<<<< Updated upstream
         agent = None
         agent_user = None
         if user.invited_by_id:
@@ -201,18 +307,20 @@ async def process_message(message: types.Message, state: FSMContext):
             if agent_user:
                 agent = session.query(Agent).filter_by(user_id=agent_user.id).first()
         
+=======
+>>>>>>> Stashed changes
         req = Request(
             user_id=user.id,
-            agent_id=agent.id if agent else None,
             full_name=data['full_name'],
             phone=data['phone'],
             email=data.get('email', ''),
-            center=data['center'],
+            center='Не указан',
             message=message.text,
             status='pending'
         )
         session.add(req)
         session.commit()
+<<<<<<< Updated upstream
         
         if agent and agent_user and agent_user.telegram_id:
             await bot.send_message(agent_user.telegram_id, 
@@ -220,10 +328,14 @@ async def process_message(message: types.Message, state: FSMContext):
                 parse_mode='Markdown')
         
         await message.answer("✅ *Заявка принята!*\n\nМы свяжемся с вами в ближайшее время ☺️", parse_mode='Markdown')
+=======
+        await message.answer("✅ Заявка принята!")
+>>>>>>> Stashed changes
     
     session.close()
     await state.finish()
 
+<<<<<<< Updated upstream
 @dp.message_handler(lambda message: message.text == '📞 Контакты')
 async def contacts(message: types.Message):
     text = """
@@ -479,18 +591,21 @@ async def add_agent_start(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.message_handler(state=AddAgent.waiting_for_full_name, user_id=config.ADMIN_IDS)
+=======
+@dp.message_handler(state=AddAgent.waiting_for_full_name)
+>>>>>>> Stashed changes
 async def add_agent_full_name(message: types.Message, state: FSMContext):
     await state.update_data(full_name=message.text)
     await message.answer("📞 *Введите телефон агента:*", parse_mode='Markdown')
     await AddAgent.waiting_for_phone.set()
 
-@dp.message_handler(state=AddAgent.waiting_for_phone, user_id=config.ADMIN_IDS)
+@dp.message_handler(state=AddAgent.waiting_for_phone)
 async def add_agent_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text)
     await message.answer("📧 *Введите email агента:*", parse_mode='Markdown')
     await AddAgent.waiting_for_email.set()
 
-@dp.message_handler(state=AddAgent.waiting_for_email, user_id=config.ADMIN_IDS)
+@dp.message_handler(state=AddAgent.waiting_for_email)
 async def add_agent_email(message: types.Message, state: FSMContext):
     session = Session()
     data = await state.get_data()
@@ -534,6 +649,7 @@ async def add_agent_email(message: types.Message, state: FSMContext):
     session.close()
     await state.finish()
 
+<<<<<<< Updated upstream
 @dp.callback_query_handler(lambda c: c.data == 'list_agents', user_id=config.ADMIN_IDS)
 async def list_agents(callback: types.CallbackQuery):
     session = Session()
@@ -728,6 +844,8 @@ async def sync_centers(callback: types.CallbackQuery):
     await callback.answer()
     session.close()
 
+=======
+>>>>>>> Stashed changes
 # НАПОМИНАНИЯ ---------------------------------------------------------------
 async def send_reminders():
     session = Session()
