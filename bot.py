@@ -337,6 +337,7 @@ async def view_center(callback: types.CallbackQuery):
     session.close()
 
 # АДМИНКА -------------------------------------------------------------------
+# АДМИНКА -------------------------------------------------------------------
 @dp.message_handler(lambda message: message.text == '📊 Статистика' and message.from_user.id in config.ADMIN_IDS)
 async def admin_stats(message: types.Message):
     session = Session()
@@ -378,71 +379,98 @@ async def admin_requests(message: types.Message):
         session.close()
         return
     
+    # Создаем клавиатуру с номерами заявок
     keyboard = InlineKeyboardMarkup(row_width=5)
     buttons = []
     for i, req in enumerate(requests[:10], 1):
-        buttons.append(InlineKeyboardButton(str(i), callback_data=f'req_{req.id}'))
+        # Сокращаем имя для кнопки
+        short_name = req.full_name.split()[0] if len(req.full_name.split()) > 0 else f"Заявка {i}"
+        buttons.append(InlineKeyboardButton(str(i), callback_data=f'admin_req_{req.id}'))
+    
+    # Размещаем кнопки по 5 в ряд
     for i in range(0, len(buttons), 5):
         keyboard.row(*buttons[i:i+5])
     
-    await message.answer(f"📋 *Всего заявок:* {len(requests)}\nВыбери номер:", parse_mode='Markdown', reply_markup=keyboard)
+    await message.answer(
+        f"📋 *Всего заявок:* {len(requests)}\n\nВыберите номер заявки для просмотра:",
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
     session.close()
 
-@dp.callback_query_handler(lambda c: c.data.startswith('req_'), user_id=config.ADMIN_IDS)
-async def view_request(callback: types.CallbackQuery):
-    req_id = int(callback.data.split('_')[1])
+# ОБРАБОТЧИКИ КОЛЛБЭКОВ ДЛЯ ЗАЯВОК -----------------------------------------
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_req_'), user_id=config.ADMIN_IDS)
+async def view_admin_request(callback: types.CallbackQuery):
+    req_id = int(callback.data.split('_')[2])
     session = Session()
     req = session.query(Request).filter_by(id=req_id).first()
     
     if not req:
-        await callback.answer("❌ Не найдена")
+        await callback.answer("❌ Заявка не найдена")
         session.close()
         return
     
+    # Определяем статус
     status_emoji = {'pending': '⏳', 'contacted': '✅', 'closed': '❌'}.get(req.status, '⏳')
-    text = f"📋 *Заявка #{req.id}*\n{status_emoji} *Статус:* {req.status}\n\n"
+    status_text = {'pending': 'Ожидает', 'contacted': 'Связались', 'closed': 'Закрыта'}.get(req.status, 'Ожидает')
+    
+    # Получаем информацию об агенте
+    agent_name = "Не назначен"
+    if req.agent_id:
+        agent = session.query(Agent).filter_by(id=req.agent_id).first()
+        if agent:
+            agent_name = agent.full_name
+    
+    text = f"📋 *Заявка #{req.id}*\n"
+    text += f"{status_emoji} *Статус:* {status_text}\n\n"
     text += f"👶 *Ребёнок:* {req.full_name}\n"
     text += f"📞 *Телефон:* {req.phone}\n"
     text += f"📧 *Email:* {req.email or '—'}\n"
-    text += f"🏊 *Центр:* {req.center}\n\n"
-    text += f"💬 *Сообщение:*\n{req.message}"
+    text += f"🏊 *Центр:* {req.center}\n"
+    text += f"👤 *Агент:* {agent_name}\n\n"
+    text += f"💬 *Сообщение:*\n{req.message}\n\n"
+    text += f"📅 *Создана:* {req.created_at.strftime('%d.%m.%Y %H:%M')}"
     
-    keyboard = InlineKeyboardMarkup(row_width=3).add(
-        InlineKeyboardButton('⏳ Ожидает', callback_data=f'status_{req.id}_pending'),
-        InlineKeyboardButton('✅ Связались', callback_data=f'status_{req.id}_contacted'),
-        InlineKeyboardButton('❌ Закрыть', callback_data=f'status_{req.id}_closed')
+    # Кнопки для изменения статуса
+    keyboard = InlineKeyboardMarkup(row_width=3)
+    keyboard.add(
+        InlineKeyboardButton('⏳ Ожидает', callback_data=f'admin_status_{req.id}_pending'),
+        InlineKeyboardButton('✅ Связались', callback_data=f'admin_status_{req.id}_contacted'),
+        InlineKeyboardButton('❌ Закрыть', callback_data=f'admin_status_{req.id}_closed')
     )
-    keyboard.add(InlineKeyboardButton('🔙 Назад', callback_data='back_to_requests'))
+    keyboard.add(InlineKeyboardButton('🔙 Назад к списку', callback_data='admin_back_to_requests'))
     
     await callback.message.edit_text(text, parse_mode='Markdown', reply_markup=keyboard)
     await callback.answer()
     session.close()
 
-@dp.callback_query_handler(lambda c: c.data.startswith('status_'), user_id=config.ADMIN_IDS)
-async def change_status(callback: types.CallbackQuery):
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_status_'), user_id=config.ADMIN_IDS)
+async def change_admin_status(callback: types.CallbackQuery):
     parts = callback.data.split('_')
-    req_id = int(parts[1])
-    new_status = parts[2]
+    req_id = int(parts[2])
+    new_status = parts[3]
     
     session = Session()
     req = session.query(Request).filter_by(id=req_id).first()
     if req:
         req.status = new_status
         session.commit()
-        await callback.answer(f"Статус изменён")
+        await callback.answer(f"Статус изменён на {new_status}")
         
+        # Обновляем отображение заявки
         new_callback = types.CallbackQuery(
             id=callback.id,
             from_user=callback.from_user,
             message=callback.message,
             chat_instance=callback.chat_instance,
-            data=f'req_{req_id}'
+            data=f'admin_req_{req_id}'
         )
-        await view_request(new_callback)
+        await view_admin_request(new_callback)
     session.close()
 
-@dp.callback_query_handler(lambda c: c.data == 'back_to_requests', user_id=config.ADMIN_IDS)
-async def back_to_requests(callback: types.CallbackQuery):
+@dp.callback_query_handler(lambda c: c.data == 'admin_back_to_requests', user_id=config.ADMIN_IDS)
+async def back_to_admin_requests(callback: types.CallbackQuery):
+    # Возвращаемся к списку заявок
     await admin_requests(callback.message)
     await callback.answer()
 
