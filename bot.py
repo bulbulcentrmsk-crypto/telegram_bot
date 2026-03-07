@@ -339,15 +339,14 @@ async def process_message(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == '📞 Контакты')
 async def contacts(message: types.Message):
     text = """
-📞 *Контакты «Буль-Буль»*
+📞 *Контакты «Буль-Буль» (Челябинск)*
 
-☎️ *Телефон:* +7 (123) 456-78-90
-📧 *Email:* info@bul-bul.ru
-🌐 *Сайт:* www.bul-bul.ru
+☎️ *Телефон:* +7 (922) 750-16-03
+🌐 *Сайт:* https://bulbulcentr.ru/chelyabinsk
 
-🕒 *Режим работы:* 09:00 — 21:00 (без выходных)
+🕒 *Режим работы:* 09:00 — 21:00 (ежедневно)
 
-📍 *Главный офис:* ул. Ленина, 10
+📍 *Головной офис:* ул. Братьев Кашириных, 87А
 """
     await message.answer(text, parse_mode='Markdown')
 
