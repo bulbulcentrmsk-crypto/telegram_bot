@@ -266,6 +266,7 @@ async def show_centers(message: types.Message):
         await message.answer(text, parse_mode='Markdown')
     session.close()
 
+# УПРАВЛЕНИЕ ЦЕНТРАМИ (ДЛЯ АДМИНА) -----------------------------------------
 @dp.callback_query_handler(lambda c: c.data == 'admin_centers', user_id=config.ADMIN_IDS)
 async def admin_centers_menu(callback: types.CallbackQuery):
     session = Session()
@@ -337,7 +338,6 @@ async def view_center(callback: types.CallbackQuery):
     session.close()
 
 # АДМИНКА -------------------------------------------------------------------
-# АДМИНКА -------------------------------------------------------------------
 @dp.message_handler(lambda message: message.text == '📊 Статистика' and message.from_user.id in config.ADMIN_IDS)
 async def admin_stats(message: types.Message):
     session = Session()
@@ -379,15 +379,11 @@ async def admin_requests(message: types.Message):
         session.close()
         return
     
-    # Создаем клавиатуру с номерами заявок
     keyboard = InlineKeyboardMarkup(row_width=5)
     buttons = []
     for i, req in enumerate(requests[:10], 1):
-        # Сокращаем имя для кнопки
-        short_name = req.full_name.split()[0] if len(req.full_name.split()) > 0 else f"Заявка {i}"
         buttons.append(InlineKeyboardButton(str(i), callback_data=f'admin_req_{req.id}'))
     
-    # Размещаем кнопки по 5 в ряд
     for i in range(0, len(buttons), 5):
         keyboard.row(*buttons[i:i+5])
     
@@ -410,11 +406,9 @@ async def view_admin_request(callback: types.CallbackQuery):
         session.close()
         return
     
-    # Определяем статус
     status_emoji = {'pending': '⏳', 'contacted': '✅', 'closed': '❌'}.get(req.status, '⏳')
     status_text = {'pending': 'Ожидает', 'contacted': 'Связались', 'closed': 'Закрыта'}.get(req.status, 'Ожидает')
     
-    # Получаем информацию об агенте
     agent_name = "Не назначен"
     if req.agent_id:
         agent = session.query(Agent).filter_by(id=req.agent_id).first()
@@ -431,7 +425,6 @@ async def view_admin_request(callback: types.CallbackQuery):
     text += f"💬 *Сообщение:*\n{req.message}\n\n"
     text += f"📅 *Создана:* {req.created_at.strftime('%d.%m.%Y %H:%M')}"
     
-    # Кнопки для изменения статуса
     keyboard = InlineKeyboardMarkup(row_width=3)
     keyboard.add(
         InlineKeyboardButton('⏳ Ожидает', callback_data=f'admin_status_{req.id}_pending'),
@@ -455,9 +448,8 @@ async def change_admin_status(callback: types.CallbackQuery):
     if req:
         req.status = new_status
         session.commit()
-        await callback.answer(f"Статус изменён на {new_status}")
+        await callback.answer(f"Статус изменён")
         
-        # Обновляем отображение заявки
         new_callback = types.CallbackQuery(
             id=callback.id,
             from_user=callback.from_user,
@@ -470,7 +462,6 @@ async def change_admin_status(callback: types.CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data == 'admin_back_to_requests', user_id=config.ADMIN_IDS)
 async def back_to_admin_requests(callback: types.CallbackQuery):
-    # Возвращаемся к списку заявок
     await admin_requests(callback.message)
     await callback.answer()
 
@@ -744,7 +735,6 @@ async def send_reminders():
     for req in pending:
         user = session.query(User).filter_by(id=req.user_id).first()
         if user and user.telegram_id:
-            texts = ['первое', 'второе', 'третье']
             try:
                 await bot.send_message(
                     user.telegram_id, 
