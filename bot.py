@@ -86,7 +86,6 @@ async def cmd_start(message: types.Message):
             user.role = 'admin'
             session.commit()
 
-    # Приветствие в зависимости от роли
     if user.role == 'admin':
         welcome_text = f"👋 *Привет, {message.from_user.first_name}!*\n\n🔑 Ты вошёл как *администратор* сети «Буль-Буль».\n📊 Управляй агентами и смотри статистику."
     elif user.role == 'agent':
@@ -135,9 +134,10 @@ async def admin_agents(message: types.Message):
 @dp.message_handler(lambda message: message.text == '📋 Все заявки' and message.from_user.id in config.ADMIN_IDS)
 async def admin_requests(message: types.Message):
     session = Session()
-    requests = session.query(Request).order_by(Request.created_at.desc()).all()
+    # Показываем только необработанные заявки
+    requests = session.query(Request).filter_by(status='pending').order_by(Request.created_at.desc()).all()
     if not requests:
-        await message.answer("📭 Заявок нет")
+        await message.answer("📭 Новых заявок нет")
         session.close()
         return
 
@@ -150,7 +150,7 @@ async def admin_requests(message: types.Message):
         keyboard.row(*buttons[i:i+5])
 
     await message.answer(
-        f"📋 *Всего заявок:* {len(requests)}\n\nВыберите номер заявки для просмотра:",
+        f"📋 *Новых заявок:* {len(requests)}\n\nВыберите номер заявки для просмотра:",
         parse_mode='Markdown',
         reply_markup=keyboard
     )
@@ -208,7 +208,7 @@ async def agent_requests(message: types.Message):
             if requests:
                 text = "📋 *Твои заявки:*\n\n"
                 for req in requests[:5]:
-                    status_emoji = '⏳' if req.status == 'pending' else '✅' if req.status == 'contacted' else '❌'
+                    status_emoji = '⏳' if req.status == 'pending' else '✅' if req.status == 'contacted' else '✔️'
                     text += f"{status_emoji} {req.full_name} — {req.created_at.strftime('%d.%m.%Y')}\n"
             else:
                 text = "📭 Заявок пока нет."
@@ -225,6 +225,88 @@ async def start_request(message: types.Message):
     await message.answer("👶 *Как зовут малыша?* (ФИО)", parse_mode='Markdown')
     await AddRequest.waiting_for_full_name.set()
 
+@dp.message_handler(state=AddRequest.waiting_for_full_name)
+async def process_full_name(message: types.Message, state: FSMContext):
+    await state.update_data(full_name=message.text)
+    await message.answer("📅 *Дата рождения ребёнка* (например, 12.05.2023)", parse_mode='Markdown')
+    await AddRequest.waiting_for_birth_date.set()
+
+@dp.message_handler(state=AddRequest.waiting_for_birth_date)
+async def process_birth_date(message: types.Message, state: FSMContext):
+    await state.update_data(birth_date=message.text)
+    await message.answer("📞 *Ваш телефон* (для связи)", parse_mode='Markdown')
+    await AddRequest.waiting_for_phone.set()
+
+@dp.message_handler(state=AddRequest.waiting_for_phone)
+async def process_phone(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.text)
+    await message.answer("🏊 *Выбери бассейн:*", reply_markup=get_centers_inline_keyboard(), parse_mode='Markdown')
+    await AddRequest.waiting_for_center.set()
+
+@dp.callback_query_handler(lambda c: c.data.startswith('center_'), state=AddRequest.waiting_for_center)
+async def process_center(callback: types.CallbackQuery, state: FSMContext):
+    center_id = callback.data.split('_')[1]
+    await state.update_data(center=center_id)
+    await callback.message.answer("💬 *Напиши удобное время или вопрос*", parse_mode='Markdown')
+    await AddRequest.waiting_for_message.set()
+    await callback.answer()
+
+@dp.message_handler(state=AddRequest.waiting_for_message)
+async def process_message(message: types.Message, state: FSMContext):
+    session = Session()
+    data = await state.get_data()
+    user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
+
+    if user:
+        agent = None
+        agent_user = None
+        if user.invited_by_id:
+            agent_user = session.query(User).filter_by(id=user.invited_by_id).first()
+            if agent_user:
+                agent = session.query(Agent).filter_by(user_id=agent_user.id).first()
+
+        req = Request(
+            user_id=user.id,
+            agent_id=agent.id if agent else None,
+            full_name=data['full_name'],
+            birth_date=data.get('birth_date', ''),
+            phone=data['phone'],
+            email='',  # не используем
+            center=data['center'],
+            message=message.text,
+            status='pending'
+        )
+        session.add(req)
+
+        # Уведомление администраторам
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    f"📢 *Новая заявка!*\n\n"
+                    f"👶 *Ребёнок:* {data['full_name']}\n"
+                    f"📅 *Дата рождения:* {data.get('birth_date', 'не указана')}\n"
+                    f"📞 *Телефон:* {data['phone']}\n"
+                    f"🏊 *Центр:* {data['center']}\n"
+                    f"💬 *Сообщение:* {message.text}\n\n"
+                    f"👤 *Агент:* {'есть' if agent else 'нет'}",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                print(f"Не удалось отправить уведомление админу {admin_id}: {e}")
+
+        session.commit()
+
+        if agent and agent_user and agent_user.telegram_id:
+            await bot.send_message(agent_user.telegram_id,
+                f"📝 *Новая заявка!*\n\n👶 {data['full_name']} (рожд. {data.get('birth_date', '?')})\n📞 {data['phone']}\n🏊 Центр: {data['center']}\n💬 {message.text}",
+                parse_mode='Markdown')
+
+        await message.answer("✅ *Заявка принята!*\n\nМы свяжемся с вами в ближайшее время ☺️", parse_mode='Markdown')
+
+    session.close()
+    await state.finish()
+
 @dp.message_handler(lambda message: message.text == '📞 Контакты')
 async def contacts_handler(message: types.Message):
     text = """
@@ -240,7 +322,7 @@ async def contacts_handler(message: types.Message):
     await message.answer(text, parse_mode='Markdown')
 
 # ----------------------------------------------------------------------
-# ЦЕНТРЫ (ПРОСМОТР ДЛЯ ВСЕХ)
+# ЦЕНТРЫ
 # ----------------------------------------------------------------------
 @dp.message_handler(lambda message: message.text == '🏊 Центры "Буль-Буль"' or message.text == '🏊 Наши центры')
 async def show_centers(message: types.Message):
@@ -274,72 +356,6 @@ async def show_centers(message: types.Message):
     session.close()
 
 # ----------------------------------------------------------------------
-# СОСТОЯНИЯ (ЗАЯВКИ)
-# ----------------------------------------------------------------------
-@dp.message_handler(state=AddRequest.waiting_for_full_name)
-async def process_full_name(message: types.Message, state: FSMContext):
-    await state.update_data(full_name=message.text)
-    await message.answer("📞 *Ваш телефон* (для связи)", parse_mode='Markdown')
-    await AddRequest.waiting_for_phone.set()
-
-@dp.message_handler(state=AddRequest.waiting_for_phone)
-async def process_phone(message: types.Message, state: FSMContext):
-    await state.update_data(phone=message.text)
-    await message.answer("📧 *Email* (необязательно)", parse_mode='Markdown')
-    await AddRequest.waiting_for_email.set()
-
-@dp.message_handler(state=AddRequest.waiting_for_email)
-async def process_email(message: types.Message, state: FSMContext):
-    await state.update_data(email=message.text)
-    await message.answer("🏊 *Выбери бассейн:*", reply_markup=get_centers_inline_keyboard(), parse_mode='Markdown')
-    await AddRequest.waiting_for_center.set()
-
-@dp.callback_query_handler(lambda c: c.data.startswith('center_'), state=AddRequest.waiting_for_center)
-async def process_center(callback: types.CallbackQuery, state: FSMContext):
-    center_id = callback.data.split('_')[1]
-    await state.update_data(center=center_id)
-    await callback.message.answer("💬 *Напиши удобное время или вопрос*", parse_mode='Markdown')
-    await AddRequest.waiting_for_message.set()
-    await callback.answer()
-
-@dp.message_handler(state=AddRequest.waiting_for_message)
-async def process_message(message: types.Message, state: FSMContext):
-    session = Session()
-    data = await state.get_data()
-    user = session.query(User).filter_by(telegram_id=message.from_user.id).first()
-
-    if user:
-        agent = None
-        agent_user = None
-        if user.invited_by_id:
-            agent_user = session.query(User).filter_by(id=user.invited_by_id).first()
-            if agent_user:
-                agent = session.query(Agent).filter_by(user_id=agent_user.id).first()
-
-        req = Request(
-            user_id=user.id,
-            agent_id=agent.id if agent else None,
-            full_name=data['full_name'],
-            phone=data['phone'],
-            email=data.get('email', ''),
-            center=data['center'],
-            message=message.text,
-            status='pending'
-        )
-        session.add(req)
-        session.commit()
-
-        if agent and agent_user and agent_user.telegram_id:
-            await bot.send_message(agent_user.telegram_id,
-                f"📝 *Новая заявка!*\n\n👶 {data['full_name']}\n📞 {data['phone']}\n🏊 Центр: {data['center']}\n💬 {message.text}",
-                parse_mode='Markdown')
-
-        await message.answer("✅ *Заявка принята!*\n\nМы свяжемся с вами в ближайшее время ☺️", parse_mode='Markdown')
-
-    session.close()
-    await state.finish()
-
-# ----------------------------------------------------------------------
 # КОЛЛБЭКИ ДЛЯ ЗАЯВОК (АДМИН)
 # ----------------------------------------------------------------------
 @dp.callback_query_handler(lambda c: c.data.startswith('admin_req_'), user_id=config.ADMIN_IDS)
@@ -352,8 +368,8 @@ async def view_admin_request(callback: types.CallbackQuery):
         session.close()
         return
 
-    status_emoji = {'pending': '⏳', 'contacted': '✅', 'closed': '❌'}.get(req.status, '⏳')
-    status_text = {'pending': 'Ожидает', 'contacted': 'Связались', 'closed': 'Закрыта'}.get(req.status, 'Ожидает')
+    status_emoji = {'pending': '⏳', 'contacted': '✅', 'processed': '✔️'}.get(req.status, '⏳')
+    status_text = {'pending': 'Ожидает', 'contacted': 'Связались', 'processed': 'Обработано'}.get(req.status, 'Ожидает')
 
     agent_name = "Не назначен"
     if req.agent_id:
@@ -364,8 +380,8 @@ async def view_admin_request(callback: types.CallbackQuery):
     text = f"📋 *Заявка #{req.id}*\n"
     text += f"{status_emoji} *Статус:* {status_text}\n\n"
     text += f"👶 *Ребёнок:* {req.full_name}\n"
+    text += f"📅 *Дата рождения:* {req.birth_date or 'не указана'}\n"
     text += f"📞 *Телефон:* {req.phone}\n"
-    text += f"📧 *Email:* {req.email or '—'}\n"
     text += f"🏊 *Центр:* {req.center}\n"
     text += f"👤 *Агент:* {agent_name}\n\n"
     text += f"💬 *Сообщение:*\n{req.message}\n\n"
@@ -375,7 +391,7 @@ async def view_admin_request(callback: types.CallbackQuery):
     keyboard.add(
         InlineKeyboardButton('⏳ Ожидает', callback_data=f'admin_status_{req.id}_pending'),
         InlineKeyboardButton('✅ Связались', callback_data=f'admin_status_{req.id}_contacted'),
-        InlineKeyboardButton('❌ Закрыть', callback_data=f'admin_status_{req.id}_closed')
+        InlineKeyboardButton('✔️ Обработано', callback_data=f'admin_status_{req.id}_processed')
     )
     keyboard.add(InlineKeyboardButton('🔙 Назад к списку', callback_data='admin_back_to_requests'))
 
@@ -392,18 +408,22 @@ async def change_admin_status(callback: types.CallbackQuery):
     session = Session()
     req = session.query(Request).filter_by(id=req_id).first()
     if req:
-        req.status = new_status
-        session.commit()
-        await callback.answer(f"Статус изменён")
-
-        new_callback = types.CallbackQuery(
-            id=callback.id,
-            from_user=callback.from_user,
-            message=callback.message,
-            chat_instance=callback.chat_instance,
-            data=f'admin_req_{req_id}'
-        )
-        await view_admin_request(new_callback)
+        if req.status != new_status:
+            req.status = new_status
+            session.commit()
+            await callback.answer(f"✅ Статус изменён на {new_status}")
+            
+            # Создаём новый callback для обновления отображения заявки
+            new_callback = types.CallbackQuery(
+                id=callback.id,
+                from_user=callback.from_user,
+                message=callback.message,
+                chat_instance=callback.chat_instance,
+                data=f'admin_req_{req_id}'
+            )
+            await view_admin_request(new_callback)
+        else:
+            await callback.answer(f"⚠️ Статус уже {new_status}", show_alert=False)
     session.close()
 
 @dp.callback_query_handler(lambda c: c.data == 'admin_back_to_requests', user_id=config.ADMIN_IDS)
@@ -412,7 +432,7 @@ async def back_to_admin_requests(callback: types.CallbackQuery):
     await callback.answer()
 
 # ----------------------------------------------------------------------
-# ДОБАВЛЕНИЕ АГЕНТА
+# ДОБАВЛЕНИЕ АГЕНТА (без email)
 # ----------------------------------------------------------------------
 @dp.callback_query_handler(lambda c: c.data == 'add_agent', user_id=config.ADMIN_IDS)
 async def add_agent_start(callback: types.CallbackQuery):
@@ -429,11 +449,11 @@ async def add_agent_full_name(message: types.Message, state: FSMContext):
 @dp.message_handler(state=AddAgent.waiting_for_phone, user_id=config.ADMIN_IDS)
 async def add_agent_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text)
-    await message.answer("📧 *Введите email агента:*", parse_mode='Markdown')
-    await AddAgent.waiting_for_email.set()
+    await message.answer("🏢 *Введите место работы агента:*", parse_mode='Markdown')
+    await AddAgent.waiting_for_place_of_work.set()
 
-@dp.message_handler(state=AddAgent.waiting_for_email, user_id=config.ADMIN_IDS)
-async def add_agent_email(message: types.Message, state: FSMContext):
+@dp.message_handler(state=AddAgent.waiting_for_place_of_work, user_id=config.ADMIN_IDS)
+async def add_agent_place_of_work(message: types.Message, state: FSMContext):
     session = Session()
     data = await state.get_data()
 
@@ -453,7 +473,8 @@ async def add_agent_email(message: types.Message, state: FSMContext):
         user_id=user.id,
         full_name=data['full_name'],
         phone=data['phone'],
-        email=message.text
+        email='',
+        place_of_work=message.text
     )
     session.add(agent)
     session.commit()
@@ -464,7 +485,7 @@ async def add_agent_email(message: types.Message, state: FSMContext):
 
 👤 *ФИО:* {data['full_name']}
 📞 *Телефон:* {data['phone']}
-📧 *Email:* {message.text}
+🏢 *Место работы:* {message.text}
 
 🔗 *Ссылка для входа:*
 `https://t.me/{bot_username}?start={referral_code}`
@@ -485,7 +506,9 @@ async def list_agents(callback: types.CallbackQuery):
         for agent in agents:
             user = session.query(User).filter_by(id=agent.user_id).first()
             status = '✅' if user and user.telegram_id else '❌'
-            text += f"{status} *{agent.full_name}*\n📞 {agent.phone}\n\n"
+            text += f"{status} *{agent.full_name}*\n"
+            text += f"📞 {agent.phone}\n"
+            text += f"🏢 {agent.place_of_work or 'не указано'}\n\n"
     else:
         text = "📭 Агентов пока нет"
     await callback.message.answer(text, parse_mode='Markdown')
