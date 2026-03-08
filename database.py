@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -36,7 +35,8 @@ class Agent(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     full_name = Column(String)
     phone = Column(String)
-    email = Column(String)
+    email = Column(String, nullable=True)  # больше не спрашиваем, оставлено для совместимости
+    place_of_work = Column(String, nullable=True)  # новое поле
     created_at = Column(DateTime, default=datetime.now)
 
 class Request(Base):
@@ -46,8 +46,9 @@ class Request(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     agent_id = Column(Integer, ForeignKey('agents.id'), nullable=True)
     full_name = Column(String)
+    birth_date = Column(String, nullable=True)  # новое поле
     phone = Column(String)
-    email = Column(String, nullable=True)
+    email = Column(String, nullable=True)  # больше не используем
     center = Column(String)
     message = Column(Text)
     status = Column(String, default='pending')
