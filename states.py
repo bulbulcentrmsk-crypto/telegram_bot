@@ -4,7 +4,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 class AddAgent(StatesGroup):
     waiting_for_full_name = State()
     waiting_for_phone = State()
-    waiting_for_place_of_work = State()  # место работы (был email)
+    waiting_for_place_of_work = State()  # место работы
 
 class AddRequest(StatesGroup):
     waiting_for_full_name = State()
