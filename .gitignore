@@ -1,1 +1,9 @@
 drive-credentials.json
+venv/
+token.pickle
+*.csv
+__pycache__/
+*.pyc
+.env
+drive_credentials.json
+exports/
