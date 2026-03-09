@@ -13,6 +13,12 @@ import config
 from database import Session, User, Agent, Request, Center, generate_referral_code
 from states import AddAgent, AddRequest, EditCenter, AddCenter
 
+# === АВТОМАТИЧЕСКОЕ СОЗДАНИЕ БАЗЫ ПРИ ЗАПУСКЕ ===
+from database import Base, engine
+Base.metadata.create_all(engine)
+print("✅ База данных проверена/создана")
+# =============================================
+
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=config.BOT_TOKEN)
