@@ -8,7 +8,7 @@ from googleapiclient.http import MediaFileUpload
 
 CREDENTIALS_FILE = 'drive-credentials.json'
 EXPORTS_FOLDER = 'exports'
-DRIVE_FOLDER_ID = '1ZUAHwD4w58U8aTwkUfBLOAM_R_plWJeb'  # замени на реальный ID
+DRIVE_FOLDER_ID = '1ZUAHwD4w58U8aTwkUfBLOAM_R_plWJeb'  
 
 def get_drive_service():
     credentials = service_account.Credentials.from_service_account_file(
