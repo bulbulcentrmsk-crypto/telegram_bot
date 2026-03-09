@@ -35,7 +35,7 @@ class Agent(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     full_name = Column(String)
     phone = Column(String)
-    email = Column(String, nullable=True)  # больше не спрашиваем, оставлено для совместимости
+    email = Column(String, nullable=True)   # больше не используем, но оставим для совместимости
     place_of_work = Column(String, nullable=True)  # новое поле
     created_at = Column(DateTime, default=datetime.now)
 
@@ -48,7 +48,7 @@ class Request(Base):
     full_name = Column(String)
     birth_date = Column(String, nullable=True)  # новое поле
     phone = Column(String)
-    email = Column(String, nullable=True)  # больше не используем
+    email = Column(String, nullable=True)   # не используем
     center = Column(String)
     message = Column(Text)
     status = Column(String, default='pending')
