@@ -12,6 +12,11 @@ from io import BytesIO
 import config
 from database import Session, User, Agent, Request, Center, generate_referral_code
 from states import AddAgent, AddRequest, EditCenter, AddCenter
+# === АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ВСЕХ ТАБЛИЦ ПРИ ЗАПУСКЕ ===
+from database import Base, engine
+Base.metadata.create_all(engine)
+print("✅ Все таблицы проверены/созданы")
+# ========================================================
 
 # === АВТОМАТИЧЕСКОЕ СОЗДАНИЕ БАЗЫ ПРИ ЗАПУСКЕ ===
 from database import Base, engine
