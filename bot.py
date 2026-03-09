@@ -797,6 +797,42 @@ async def send_reminders():
 # ----------------------------------------------------------------------
 # ЗАПУСК
 # ----------------------------------------------------------------------
+# ============= КОМАНДА ДЛЯ ПЕРЕСОЗДАНИЯ БАЗЫ (ТОЛЬКО ДЛЯ АДМИНА) =============
+@dp.message_handler(commands=['initdb'])
+async def init_db_command(message: types.Message):
+    # Проверяем, что пользователь админ
+    if message.from_user.id not in config.ADMIN_IDS:
+        await message.answer("⛔ У вас нет прав на выполнение этой команды.")
+        return
+
+    # Клавиатура подтверждения
+    keyboard = InlineKeyboardMarkup().add(
+        InlineKeyboardButton('✅ Да, пересоздать БД', callback_data='confirm_initdb'),
+        InlineKeyboardButton('❌ Отмена', callback_data='cancel_initdb')
+    )
+    await message.answer(
+        "⚠️ *ВНИМАНИЕ!*\n"
+        "Эта команда полностью пересоздаст базу данных, все текущие данные будут потеряны!\n"
+        "Вы уверены?",
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
+
+@dp.callback_query_handler(lambda c: c.data == 'confirm_initdb', user_id=config.ADMIN_IDS)
+async def confirm_initdb(callback: types.CallbackQuery):
+    from database import Base, engine
+    await callback.message.edit_text("🔄 Пересоздаю базу данных...")
+    try:
+        # Удаляем все старые таблицы и создаём новые с правильной структурой
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+        await callback.message.edit_text("✅ База данных успешно пересоздана! Теперь всё должно работать.")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка: {e}")
+
+@dp.callback_query_handler(lambda c: c.data == 'cancel_initdb', user_id=config.ADMIN_IDS)
+async def cancel_initdb(callback: types.CallbackQuery):
+    await callback.message.edit_text("❌ Операция отменена.")
 if __name__ == '__main__':
     scheduler.add_job(send_reminders, 'interval', hours=24)
     scheduler.start()
